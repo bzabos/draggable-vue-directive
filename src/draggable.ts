@@ -1,4 +1,5 @@
-import Vue from "vue";
+import lodash from 'lodash'
+import Vue from "vue"
 
 export type HandleType = Vue | HTMLElement;
 
@@ -19,6 +20,7 @@ export interface MarginOptions {
     left?: number;
 }
 
+// todo: deprecate change handlers in favor of event bubbling
 export interface DraggableValue {
     handle?: HandleType;
     onPositionChange?: (posDiff?: PositionDiff, pos?: Position, event?: MouseEvent) => void;
@@ -53,6 +55,7 @@ function extractHandle(handle: HandleType): HTMLElement {
     return handle && (handle as Vue).$el || handle as HTMLElement;
 }
 
+// todo: try to gut this in favor of `alexreardon/css-box-model`
 function getPosWithBoundaries(elementRect: ClientRect, boundingRect: ClientRect, left: number, top: number, boundingRectMargin: MarginOptions = {}): Position {
     const adjustedPos: Position = {left, top};
     const {height, width} = elementRect;
@@ -139,7 +142,6 @@ export const Draggable = {
             }
 
             setState({currentDragPosition});
-            updateElementStyle();
             handlePositionChanged(event);
         }
 
@@ -152,14 +154,12 @@ export const Draggable = {
                 && binding.value.boundingElement.getBoundingClientRect();
         }
 
-        function updateElementStyle(): void {
-            const state = getState();
-            if (!state.currentDragPosition) {
-                return;
-            }
-            el.style.position = "fixed";
-            el.style.left = `${state.currentDragPosition.left}px`;
-            el.style.top = `${state.currentDragPosition.top}px`;
+
+        function dispatch(el, name, data) {
+            el.dispatchEvent(lodash.extend(new Event(name, {
+                bubbles: true,
+                cancelable: true,
+            }), {data}))
         }
 
         function mouseUp(event: MouseEvent) {
@@ -203,13 +203,15 @@ export const Draggable = {
             const startingDragPosition = getRectPosition();
             const initialPosition = initialRectPositionFromBinding || initialRectPositionFromState || startingDragPosition;
 
-            setState({
+            const initialState = {
                 initialPosition: initialPosition,
                 startDragPosition: initialPosition,
                 currentDragPosition: initialPosition,
                 initialMousePos: getInitialMousePosition(event)
-            });
-            updateElementStyle();
+            }
+
+            setState(initialState)
+            dispatch(el, 'dragInitialized', {initialState, event})
         }
 
         function setState(partialState: Partial<DraggableState>) {
@@ -218,27 +220,32 @@ export const Draggable = {
                 ...prevState,
                 ...partialState
             };
+
+            // todo: store this state in memory and skip marshalling through JSON
+            // todo: define as a mixin suite rather than solely a directive
             handler.setAttribute("draggable-state", JSON.stringify(state));
         }
 
         function handlePositionChanged(event?: MouseEvent, changePositionType?: ChangePositionType) {
-
             const state = getState();
             const posDiff: PositionDiff = {x: 0, y: 0};
             if (state.currentDragPosition && state.startDragPosition) {
                 posDiff.x = state.currentDragPosition.left - state.startDragPosition.left;
                 posDiff.y = state.currentDragPosition.top - state.startDragPosition.top;
             }
-            const currentPosition = state.currentDragPosition && {...state.currentDragPosition};
+            const currentPosition = state.currentDragPosition && { ...state.currentDragPosition };
 
             if (changePositionType === ChangePositionType.End) {
                 binding.value && binding.value.onDragEnd && state && binding.value.onDragEnd(posDiff, currentPosition, event);
+                dispatch(el, 'dragEnd', {posDiff, currentPosition, event})
             }
             else if (changePositionType === ChangePositionType.Start) {
                 binding.value && binding.value.onDragStart && state && binding.value.onDragStart(posDiff, currentPosition, event);
+                dispatch(el, 'dragStart', {posDiff, currentPosition, event})
             }
             else {
                 binding.value && binding.value.onPositionChange && state && binding.value.onPositionChange(posDiff, currentPosition, event);
+                dispatch(el, 'dragging', {posDiff, currentPosition, event})
             }
         }
 
