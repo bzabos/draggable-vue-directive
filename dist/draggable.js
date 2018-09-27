@@ -1,13 +1,17 @@
 "use strict";
-var __assign = (this && this.__assign) || Object.assign || function(t) {
-    for (var s, i = 1, n = arguments.length; i < n; i++) {
-        s = arguments[i];
-        for (var p in s) if (Object.prototype.hasOwnProperty.call(s, p))
-            t[p] = s[p];
-    }
-    return t;
+var __assign = (this && this.__assign) || function () {
+    __assign = Object.assign || function(t) {
+        for (var s, i = 1, n = arguments.length; i < n; i++) {
+            s = arguments[i];
+            for (var p in s) if (Object.prototype.hasOwnProperty.call(s, p))
+                t[p] = s[p];
+        }
+        return t;
+    };
+    return __assign.apply(this, arguments);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
+var lodash_1 = require("lodash");
 var ChangePositionType;
 (function (ChangePositionType) {
     ChangePositionType[ChangePositionType["Start"] = 1] = "Start";
@@ -17,6 +21,7 @@ var ChangePositionType;
 function extractHandle(handle) {
     return handle && handle.$el || handle;
 }
+// todo: try to gut this in favor of `alexreardon/css-box-model`
 function getPosWithBoundaries(elementRect, boundingRect, left, top, boundingRectMargin) {
     if (boundingRectMargin === void 0) { boundingRectMargin = {}; }
     var adjustedPos = { left: left, top: top };
@@ -82,7 +87,6 @@ exports.Draggable = {
                 currentDragPosition = getPosWithBoundaries(elementRect, boundingRect, currentDragPosition.left, currentDragPosition.top, binding.value.boundingRectMargin);
             }
             setState({ currentDragPosition: currentDragPosition });
-            updateElementStyle();
             handlePositionChanged(event);
         }
         function getBoundingRect() {
@@ -93,14 +97,11 @@ exports.Draggable = {
                 || binding.value.boundingElement
                     && binding.value.boundingElement.getBoundingClientRect();
         }
-        function updateElementStyle() {
-            var state = getState();
-            if (!state.currentDragPosition) {
-                return;
-            }
-            el.style.position = "fixed";
-            el.style.left = state.currentDragPosition.left + "px";
-            el.style.top = state.currentDragPosition.top + "px";
+        function dispatch(el, name, data) {
+            el.dispatchEvent(lodash_1.default.extend(new Event(name, {
+                bubbles: true,
+                cancelable: true,
+            }), { data: data }));
         }
         function mouseUp(event) {
             var currentRectPosition = getRectPosition();
@@ -138,17 +139,20 @@ exports.Draggable = {
             var initialRectPositionFromState = state.initialPosition;
             var startingDragPosition = getRectPosition();
             var initialPosition = initialRectPositionFromBinding || initialRectPositionFromState || startingDragPosition;
-            setState({
+            var initialState = {
                 initialPosition: initialPosition,
                 startDragPosition: initialPosition,
                 currentDragPosition: initialPosition,
                 initialMousePos: getInitialMousePosition(event)
-            });
-            updateElementStyle();
+            };
+            setState(initialState);
+            dispatch(el, 'dragInitialized', { initialState: initialState, event: event });
         }
         function setState(partialState) {
             var prevState = getState();
             var state = __assign({}, prevState, partialState);
+            // todo: store this state in memory and skip marshalling through JSON
+            // todo: define as a mixin suite rather than solely a directive
             handler.setAttribute("draggable-state", JSON.stringify(state));
         }
         function handlePositionChanged(event, changePositionType) {
@@ -161,12 +165,15 @@ exports.Draggable = {
             var currentPosition = state.currentDragPosition && __assign({}, state.currentDragPosition);
             if (changePositionType === ChangePositionType.End) {
                 binding.value && binding.value.onDragEnd && state && binding.value.onDragEnd(posDiff, currentPosition, event);
+                dispatch(el, 'dragEnd', { posDiff: posDiff, currentPosition: currentPosition, event: event });
             }
             else if (changePositionType === ChangePositionType.Start) {
                 binding.value && binding.value.onDragStart && state && binding.value.onDragStart(posDiff, currentPosition, event);
+                dispatch(el, 'dragStart', { posDiff: posDiff, currentPosition: currentPosition, event: event });
             }
             else {
                 binding.value && binding.value.onPositionChange && state && binding.value.onPositionChange(posDiff, currentPosition, event);
+                dispatch(el, 'dragging', { posDiff: posDiff, currentPosition: currentPosition, event: event });
             }
         }
         function getState() {
