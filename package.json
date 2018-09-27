@@ -28,7 +28,10 @@
     "url": "https://github.com//IsraelZablianov/draggable-vue-directive/issues"
   },
   "homepage": "https://github.com//IsraelZablianov/draggable-vue-directive#readme",
-  "dependencies": {},
+  "dependencies": {
+    "lodash": "^4.17.11",
+    "typescript": "^3.0.3"
+  },
   "devDependencies": {
     "vue": "^2.5.13"
   }
